@@ -28,8 +28,10 @@ from __future__ import (unicode_literals, division, print_function,
 
 import time
 import argparse
+import os
 
 children = []
+total_mem = (os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES'))/(1024.**2)
 
 
 def get_percent(process):
@@ -125,14 +127,14 @@ def monitor(pid, logfile=None, plot=None, duration=None, interval=None,
             'Elapsed time'.center(12),
             'CPU (%)'.center(12),
             'Real (MB)'.center(12),
-            'Virtual (MB)'.center(12))
+            'MEM (%)'.center(12))
         )
 
     log = {}
     log['times'] = []
     log['cpu'] = []
     log['mem_real'] = []
-    log['mem_virtual'] = []
+    log['mem_pct'] = []
 
     try:
 
@@ -161,30 +163,30 @@ def monitor(pid, logfile=None, plot=None, duration=None, interval=None,
 
             # Get current CPU and memory
             try:
-                current_cpu = get_percent(pr)
+                current_cpu = get_percent(pr) / os.cpu_count()
                 current_mem = get_memory(pr)
             except Exception:
                 break
             current_mem_real = current_mem.rss / 1024. ** 2
-            current_mem_virtual = current_mem.vms / 1024. ** 2
+            current_mem_pct = (current_mem_real / total_mem) * 100
 
             # Get information for children
             if include_children:
                 for child in all_children(pr):
                     try:
-                        current_cpu += get_percent(child)
+                        current_cpu += get_percent(child) / os.cpu_count()
                         current_mem = get_memory(child)
                     except Exception:
                         continue
                     current_mem_real += current_mem.rss / 1024. ** 2
-                    current_mem_virtual += current_mem.vms / 1024. ** 2
+                    current_mem_pct = (current_mem_real / total_mem) * 100
 
             if logfile:
                 f.write("{0:12.3f} {1:12.3f} {2:12.3f} {3:12.3f}\n".format(
                     current_time - start_time,
                     current_cpu,
                     current_mem_real,
-                    current_mem_virtual))
+                    current_mem_pct))
                 f.flush()
 
             if interval is not None:
@@ -195,7 +197,7 @@ def monitor(pid, logfile=None, plot=None, duration=None, interval=None,
                 log['times'].append(current_time - start_time)
                 log['cpu'].append(current_cpu)
                 log['mem_real'].append(current_mem_real)
-                log['mem_virtual'].append(current_mem_virtual)
+                log['mem_pct'].append(current_mem_pct)
 
     except KeyboardInterrupt:  # pragma: no cover
         pass
@@ -220,10 +222,10 @@ def monitor(pid, logfile=None, plot=None, duration=None, interval=None,
 
             ax2 = ax.twinx()
 
-            ax2.plot(log['times'], log['mem_real'], '-', lw=1, color='b')
-            ax2.set_ylim(0., max(log['mem_real']) * 1.2)
+            ax2.plot(log['times'], log['mem_pct'], '-', lw=1, color='b')
+            ax2.set_ylim(0., max(log['cpu']) * 1.2)
 
-            ax2.set_ylabel('Real Memory (MB)', color='b')
+            ax2.set_ylabel('Real Memory (%)', color='b')
 
             ax.grid()
 
